@@ -1,12 +1,25 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, url_for, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from flask_mysqldb import MySQL
 from flask_cors import CORS
 from config import Config
 from models.user_model import UserModel
+from models.admin_service_modal import AdminServiceModel
+from models.product_model import ProductModel
+import os
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Set upload folder and allowed file types
+UPLOAD_FOLDER = 'uploads/'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
+
+# Ensure upload folder exists
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 # Allow CORS for specific methods
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173", "methods": ["GET", "POST", "PUT", "DELETE"]}})
@@ -14,6 +27,8 @@ mysql = MySQL(app)
 jwt = JWTManager(app)
 
 user_model = UserModel(mysql)
+admin_service_model = AdminServiceModel(mysql)
+product_model = ProductModel(mysql, base_url="http://127.0.0.1:5000")
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -91,7 +106,7 @@ def get_customers():
     except Exception as e:
         print(f"Error fetching customers: {e}")  # Debugging statement
         return jsonify(message="An error occurred while fetching users."), 500
-    
+
 @app.route('/users/<int:user_id>', methods=['DELETE'])
 @jwt_required()
 def delete_user(user_id):
@@ -105,6 +120,121 @@ def delete_user(user_id):
         return jsonify(message="User deleted successfully"), 200
     else:
         return jsonify(message="An error occurred while deleting the user"), 500
+
+@app.route('/services', methods=['POST'])
+@jwt_required()
+def add_service():
+    data = request.get_json()
+    name = data.get('name')
+    description = data.get('description')
+    price = data.get('price')
+    
+    admin_service_model.add_service(name, description, price)
+    return jsonify(message="Service added successfully"), 201
+
+@app.route('/services/<int:service_id>', methods=['PUT'])
+@jwt_required()
+def update_service(service_id):
+    data = request.get_json()
+    name = data.get('name')
+    description = data.get('description')
+    price = data.get('price')
+    
+    admin_service_model.update_service(service_id, name, description, price)
+    return jsonify(message="Service updated successfully"), 200
+
+@app.route('/services/<int:service_id>', methods=['DELETE'])
+@jwt_required()
+def delete_service(service_id):
+    if admin_service_model.delete_service(service_id):
+        return jsonify(message="Service deleted successfully"), 200
+    else:
+        return jsonify(message="An error occurred while deleting the service"), 500
+
+@app.route('/services', methods=['GET'])
+def get_services():
+    services = admin_service_model.get_all_services()
+    service_list = [{'id': service[0], 'name': service[1], 'description': service[2], 'price': service[3]} for service in services]
+    return jsonify(service_list), 200
+
+# Manage products
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+@app.route('/products', methods=['POST'])
+@jwt_required()
+def add_product():
+    product_name = request.form.get('product_name')
+    description = request.form.get('description')
+    category = request.form.get('category')
+    price = request.form.get('price')
+
+    # File handling
+    image = request.files.get('image')
+    if image and allowed_file(image.filename):
+        filename = secure_filename(image.filename)
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        image.save(image_path)
+        
+        # Store relative URL to image file
+        image_url = url_for('uploaded_file', filename=filename, _external=True)
+    else:
+        image_url = ''  # Default to empty if no image is uploaded
+
+    product_model.add_product(product_name, description, category, price, image_url)
+    return jsonify({'message': 'Product added successfully!'}), 201
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/products', methods=['GET'])
+def get_products():
+    try:
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT * FROM products")
+        results = cur.fetchall()
+        
+        print("Raw results from database:", results)  # Debug line to check raw database output
+        
+        products = []
+        for result in results:
+            products.append({
+                'id': result[0],
+                'product_name': result[1],
+                'description': result[2],
+                'category': result[3],
+                'price': result[4],
+                'image_url': result[5]
+            })
+        
+        print("Formatted products:", products)  # Debug line to check formatted output
+        
+        return jsonify(products)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
+@app.route('/products/<int:product_id>', methods=['PUT'])
+@jwt_required()
+def update_product(product_id):
+    data = request.get_json()
+    product_model.update_product(
+        product_id,
+        product_name=data['product_name'],
+        description=data['description'],
+        category=data['category'],
+        price=data['price'],
+        image_url=data['image_url']
+    )
+    return jsonify({'message': 'Product updated successfully!'})
+
+@app.route('/products/<int:product_id>', methods=['DELETE'])
+@jwt_required()
+def delete_product(product_id):
+    product_model.delete_product(product_id)
+    return jsonify({'message': 'Product deleted successfully!'})
 
 if __name__ == "__main__":
     app.run(debug=True)
