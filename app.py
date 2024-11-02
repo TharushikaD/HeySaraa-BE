@@ -12,6 +12,7 @@ from transformers import AutoModelForImageClassification
 from PIL import Image
 import torch
 import torchvision.transforms as transforms
+from models.haircut_model import HaircutModel
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -44,6 +45,7 @@ jwt = JWTManager(app)
 user_model = UserModel(mysql)
 admin_service_model = AdminServiceModel(mysql)
 product_model = ProductModel(mysql, base_url="http://127.0.0.1:5000")
+haircut_model = HaircutModel(mysql, base_url="http://127.0.0.1:5000")
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -289,10 +291,14 @@ def detect_face_shape():
             # Print the detected face shape
             print("Detected face shape:", detected_face_shape)
 
+            # Retrieve recommended haircuts for the detected face shape
+            recommended_haircuts = haircut_model.get_haircuts_by_face_shape(detected_face_shape)
+
         return jsonify({
             'predicted_class': predicted_class,
             'detected_face_shape': detected_face_shape,
-            'confidence': confidence
+            'confidence': confidence,
+            'recommended_haircuts': recommended_haircuts
         })
     except Exception as e:
         print("Error in detect_face_shape:", str(e))  # Debugging line for errors
@@ -301,7 +307,94 @@ def detect_face_shape():
 
 
 
+# HairCut Management
+@app.route('/haircuts', methods=['GET'])
+def get_all_haircuts():
+    try:
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT * FROM haircuts")  # Assuming you have a haircuts table
+        results = cur.fetchall()
+        
+        print("Raw results from database:", results)  # Debug line to check raw database output
+        
+        haircuts = []
+        for result in results:
+            haircuts.append({
+                'id': result[0],
+                'haircut_name': result[1],
+                'description': result[2],
+                'face_shape': result[3],
+                'image_url': result[4]  # Assuming this is where the image URL is stored
+            })
+        
+        print("Formatted haircuts:", haircuts)  # Debug line to check formatted output
+        
+        return jsonify(haircuts), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
 
+@app.route('/haircutss', methods=['GET'])
+def get_haircuts():
+    face_shape = request.args.get('face_shape')
+    if face_shape:
+        haircuts = haircut_model.get_haircuts_by_face_shape(face_shape)
+        return jsonify(haircuts)
+    return jsonify({'error': 'Face shape not provided'}), 400
+
+# Route to add a new haircut
+@app.route('/haircuts', methods=['POST'])
+@jwt_required()  # Ensure to protect this route with JWT
+def add_haircut():
+    face_shape = request.form.get('face_shape')
+    haircut_name = request.form.get('haircut_name')
+    description = request.form.get('description', '')
+
+    # File handling for the haircut image
+    image = request.files.get('image')
+    if image and allowed_file(image.filename):
+        filename = secure_filename(image.filename)
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        image.save(image_path)
+
+        # Store relative URL to image file
+        image_url = url_for('uploaded_file', filename=filename, _external=True)
+    else:
+        image_url = ''  # Default to empty if no image is uploaded
+
+    success = haircut_model.add_haircut(face_shape, haircut_name, description, image_url)
+    return jsonify({'success': success}), 201 if success else 400
+
+# Route to update a specific haircut
+@app.route('/haircuts/<int:haircut_id>', methods=['PUT'])
+@jwt_required()  # Ensure to protect this route with JWT
+def update_haircut(haircut_id):
+    face_shape = request.form.get('face_shape')
+    haircut_name = request.form.get('haircut_name')
+    description = request.form.get('description', '')
+
+    # File handling for the updated haircut image
+    image = request.files.get('image')
+    if image and allowed_file(image.filename):
+        filename = secure_filename(image.filename)
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        image.save(image_path)
+
+        # Store relative URL to image file
+        image_url = url_for('uploaded_file', filename=filename, _external=True)
+    else:
+        image_url = None  # Default to None if no new image is uploaded
+
+    success = haircut_model.update_haircut(haircut_id, face_shape, haircut_name, description, image_url)
+    return jsonify({'success': success}), 200 if success else 400
+
+# Route to delete a specific haircut
+@app.route('/haircuts/<int:haircut_id>', methods=['DELETE'])
+@jwt_required()  # Ensure to protect this route with JWT
+def delete_haircut(haircut_id):
+    success = haircut_model.delete_haircut(haircut_id)
+    return jsonify({'success': success}), 200 if success else 404
 
 
 
