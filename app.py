@@ -8,9 +8,24 @@ from models.admin_service_modal import AdminServiceModel
 from models.product_model import ProductModel
 import os
 from werkzeug.utils import secure_filename
+from transformers import AutoModelForImageClassification
+from PIL import Image
+import torch
+import torchvision.transforms as transforms
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Load your model
+model = AutoModelForImageClassification.from_pretrained("TharushikaD/facecut_me")
+model.eval()  # Set the model to evaluation mode
+
+# Define preprocessing function
+preprocess = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+])
 
 # Set upload folder and allowed file types
 UPLOAD_FOLDER = 'uploads/'
@@ -235,6 +250,60 @@ def update_product(product_id):
 def delete_product(product_id):
     product_model.delete_product(product_id)
     return jsonify({'message': 'Product deleted successfully!'})
+
+
+@app.route('/detect-face-shape', methods=['POST'])
+def detect_face_shape():
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'No image provided'}), 400
+
+        file = request.files['image']
+        image = Image.open(file.stream).convert("RGB")
+        image_tensor = preprocess(image).unsqueeze(0)
+        
+        # Check the tensor shape
+        print("Image tensor shape:", image_tensor.shape)  # Debug statement
+
+        with torch.no_grad():
+            output = model(image_tensor)
+            probabilities = torch.nn.functional.softmax(output.logits, dim=1)
+            predicted_class = torch.argmax(probabilities, dim=1).item()
+            confidence = probabilities[0, predicted_class].item()
+
+            # Print predicted class and confidence
+            print("Predicted class:", predicted_class)
+            print("Confidence:", confidence)
+
+            # Define a mapping from class index to face shape based on model details
+            face_shape_mapping = {
+                0: 'Actress Heart Face',
+                1: 'Actress Oval Face',
+                2: 'Actress Round Face',
+                3: 'Actress Square Face'
+            }
+
+            # Get the detected face shape
+            detected_face_shape = face_shape_mapping.get(predicted_class, 'Unknown')
+
+            # Print the detected face shape
+            print("Detected face shape:", detected_face_shape)
+
+        return jsonify({
+            'predicted_class': predicted_class,
+            'detected_face_shape': detected_face_shape,
+            'confidence': confidence
+        })
+    except Exception as e:
+        print("Error in detect_face_shape:", str(e))  # Debugging line for errors
+        return jsonify({'error': str(e)}), 500
+
+
+
+
+
+
+
 
 if __name__ == "__main__":
     app.run(debug=True)
