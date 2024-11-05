@@ -4,7 +4,7 @@ import os
 class ProductModel:
     def __init__(self, mysql: MySQL, base_url: str):
         self.mysql = mysql
-        self.base_url = base_url  # e.g., 'http://localhost:5000'
+        self.base_url = base_url  
 
     def add_product(self, product_name, description, category, price, image_filename):
         cursor = self.mysql.connection.cursor()
@@ -22,7 +22,7 @@ class ProductModel:
         products = cursor.fetchall()
         cursor.close()
 
-        # Construct the product list with full image URLs
+        
         product_list = []
         for product in products:
             product_id, name, description, category, price, image_filename = product

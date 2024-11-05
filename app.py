@@ -17,27 +17,24 @@ from models.haircut_model import HaircutModel
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Load your model
 model = AutoModelForImageClassification.from_pretrained("TharushikaD/facecut_me")
-model.eval()  # Set the model to evaluation mode
+model.eval()  
 
-# Define preprocessing function
 preprocess = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
 ])
 
-# Set upload folder and allowed file types
+
 UPLOAD_FOLDER = 'uploads/'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
-# Ensure upload folder exists
+
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# Allow CORS for specific methods
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173", "methods": ["GET", "POST", "PUT", "DELETE"]}})
 mysql = MySQL(app)
 jwt = JWTManager(app)
@@ -91,24 +88,24 @@ def get_user(user_id):
 @app.route('/users/<int:user_id>', methods=['PUT'])
 @jwt_required()
 def update_user(user_id):
-    print(f"Updating user with ID: {user_id}")  # Debugging statement
+    print(f"Updating user with ID: {user_id}")  
     data = request.get_json()
-    name = data.get('name')  # Optional
-    email = data.get('email')  # Optional
-    password = data.get('password')  # Optional
+    name = data.get('name')  
+    email = data.get('email') 
+    password = data.get('password')  
 
-    # Validate user existence
+   
     user = user_model.get_user_by_id(user_id)
     if not user:
         return jsonify(message="User not found"), 404
 
-    # Update user data
+    
     if name:
-        user_model.update_user_name(user_id, name)  # Ensure this method exists in UserModel
+        user_model.update_user_name(user_id, name)  
     if email:
-        user_model.update_user_email(user_id, email)  # Ensure this method exists in UserModel
+        user_model.update_user_email(user_id, email)  
     if password:
-        user_model.update_user_password(user_id, password)  # Ensure this method exists in UserModel
+        user_model.update_user_password(user_id, password)  
 
     return jsonify(message="User updated successfully"), 200
 
@@ -117,22 +114,21 @@ def update_user(user_id):
 def get_customers():
     try:
         customers = user_model.get_users_by_role('customer')
-        # Format the data for the response
         customer_list = [{'id': customer[0], 'name': customer[1], 'email': customer[2]} for customer in customers]
         return jsonify(customer_list), 200
     except Exception as e:
-        print(f"Error fetching customers: {e}")  # Debugging statement
+        print(f"Error fetching customers: {e}")  
         return jsonify(message="An error occurred while fetching users."), 500
 
 @app.route('/users/<int:user_id>', methods=['DELETE'])
 @jwt_required()
 def delete_user(user_id):
-    # Check if user exists
+   
     user = user_model.get_user_by_id(user_id)
     if not user:
         return jsonify(message="User not found"), 404
 
-    # Delete user
+   
     if user_model.delete_user(user_id):
         return jsonify(message="User deleted successfully"), 200
     else:
@@ -186,17 +182,17 @@ def add_product():
     category = request.form.get('category')
     price = request.form.get('price')
 
-    # File handling
+   
     image = request.files.get('image')
     if image and allowed_file(image.filename):
         filename = secure_filename(image.filename)
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         image.save(image_path)
         
-        # Store relative URL to image file
+        
         image_url = url_for('uploaded_file', filename=filename, _external=True)
     else:
-        image_url = ''  # Default to empty if no image is uploaded
+        image_url = '' 
 
     product_model.add_product(product_name, description, category, price, image_url)
     return jsonify({'message': 'Product added successfully!'}), 201
@@ -212,7 +208,7 @@ def get_products():
         cur.execute("SELECT * FROM products")
         results = cur.fetchall()
         
-        print("Raw results from database:", results)  # Debug line to check raw database output
+        print("Raw results from database:", results)  
         
         products = []
         for result in results:
@@ -225,7 +221,7 @@ def get_products():
                 'image_url': result[5]
             })
         
-        print("Formatted products:", products)  # Debug line to check formatted output
+        print("Formatted products:", products)  
         
         return jsonify(products)
     except Exception as e:
@@ -264,8 +260,8 @@ def detect_face_shape():
         image = Image.open(file.stream).convert("RGB")
         image_tensor = preprocess(image).unsqueeze(0)
         
-        # Check the tensor shape
-        print("Image tensor shape:", image_tensor.shape)  # Debug statement
+      
+        print("Image tensor shape:", image_tensor.shape)  
 
         with torch.no_grad():
             output = model(image_tensor)
@@ -273,11 +269,10 @@ def detect_face_shape():
             predicted_class = torch.argmax(probabilities, dim=1).item()
             confidence = probabilities[0, predicted_class].item()
 
-            # Print predicted class and confidence
             print("Predicted class:", predicted_class)
             print("Confidence:", confidence)
 
-            # Define a mapping from class index to face shape based on model details
+           
             face_shape_mapping = {
                 0: 'Actress Heart Face',
                 1: 'Actress Oval Face',
@@ -285,13 +280,9 @@ def detect_face_shape():
                 3: 'Actress Square Face'
             }
 
-            # Get the detected face shape
+            
             detected_face_shape = face_shape_mapping.get(predicted_class, 'Unknown')
-
-            # Print the detected face shape
             print("Detected face shape:", detected_face_shape)
-
-            # Retrieve recommended haircuts for the detected face shape
             recommended_haircuts = haircut_model.get_haircuts_by_face_shape(detected_face_shape)
 
         return jsonify({
@@ -301,10 +292,8 @@ def detect_face_shape():
             'recommended_haircuts': recommended_haircuts
         })
     except Exception as e:
-        print("Error in detect_face_shape:", str(e))  # Debugging line for errors
+        print("Error in detect_face_shape:", str(e))  
         return jsonify({'error': str(e)}), 500
-
-
 
 
 # HairCut Management
@@ -312,10 +301,10 @@ def detect_face_shape():
 def get_all_haircuts():
     try:
         cur = mysql.connection.cursor()
-        cur.execute("SELECT * FROM haircuts")  # Assuming you have a haircuts table
+        cur.execute("SELECT * FROM haircuts")  
         results = cur.fetchall()
         
-        print("Raw results from database:", results)  # Debug line to check raw database output
+        print("Raw results from database:", results)  
         
         haircuts = []
         for result in results:
@@ -324,10 +313,10 @@ def get_all_haircuts():
                 'haircut_name': result[1],
                 'description': result[2],
                 'face_shape': result[3],
-                'image_url': result[4]  # Assuming this is where the image URL is stored
+                'image_url': result[4]  
             })
         
-        print("Formatted haircuts:", haircuts)  # Debug line to check formatted output
+        print("Formatted haircuts:", haircuts)  
         
         return jsonify(haircuts), 200
     except Exception as e:
@@ -343,55 +332,55 @@ def get_haircuts():
         return jsonify(haircuts)
     return jsonify({'error': 'Face shape not provided'}), 400
 
-# Route to add a new haircut
+
 @app.route('/haircuts', methods=['POST'])
-@jwt_required()  # Ensure to protect this route with JWT
+@jwt_required() 
 def add_haircut():
     face_shape = request.form.get('face_shape')
     haircut_name = request.form.get('haircut_name')
     description = request.form.get('description', '')
 
-    # File handling for the haircut image
+    
     image = request.files.get('image')
     if image and allowed_file(image.filename):
         filename = secure_filename(image.filename)
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         image.save(image_path)
 
-        # Store relative URL to image file
+       
         image_url = url_for('uploaded_file', filename=filename, _external=True)
     else:
-        image_url = ''  # Default to empty if no image is uploaded
+        image_url = ''  
 
     success = haircut_model.add_haircut(face_shape, haircut_name, description, image_url)
     return jsonify({'success': success}), 201 if success else 400
 
-# Route to update a specific haircut
+
 @app.route('/haircuts/<int:haircut_id>', methods=['PUT'])
-@jwt_required()  # Ensure to protect this route with JWT
+@jwt_required()  
 def update_haircut(haircut_id):
     face_shape = request.form.get('face_shape')
     haircut_name = request.form.get('haircut_name')
     description = request.form.get('description', '')
 
-    # File handling for the updated haircut image
+    
     image = request.files.get('image')
     if image and allowed_file(image.filename):
         filename = secure_filename(image.filename)
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         image.save(image_path)
 
-        # Store relative URL to image file
+        
         image_url = url_for('uploaded_file', filename=filename, _external=True)
     else:
-        image_url = None  # Default to None if no new image is uploaded
+        image_url = None  
 
     success = haircut_model.update_haircut(haircut_id, face_shape, haircut_name, description, image_url)
     return jsonify({'success': success}), 200 if success else 400
 
-# Route to delete a specific haircut
+
 @app.route('/haircuts/<int:haircut_id>', methods=['DELETE'])
-@jwt_required()  # Ensure to protect this route with JWT
+@jwt_required() 
 def delete_haircut(haircut_id):
     success = haircut_model.delete_haircut(haircut_id)
     return jsonify({'success': success}), 200 if success else 404
