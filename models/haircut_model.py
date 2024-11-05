@@ -4,7 +4,7 @@ from flask_mysqldb import MySQL
 class HaircutModel:
     def __init__(self, mysql: MySQL, base_url: str):
         self.mysql = mysql
-        self.base_url = base_url  # e.g., 'http://localhost:5000'
+        self.base_url = base_url  
 
     def add_haircut(self, face_shape, haircut_name, description, image_filename):
         """Adds a new haircut entry to the database."""
@@ -24,7 +24,6 @@ class HaircutModel:
         haircuts = cursor.fetchall()
         cursor.close()
 
-        # Construct the haircut list with full image URLs
         haircut_list = []
         for haircut in haircuts:
             haircut_id, face_shape, name, description, image_filename = haircut
@@ -62,13 +61,12 @@ class HaircutModel:
     
 
     # def get_haircuts_by_face_shape(self, face_shape):
-    #     """Retrieves haircuts that match the specified face shape."""
     #     cursor = self.mysql.connection.cursor()
     #     cursor.execute("SELECT id, face_shape, haircut_name, description, image_url FROM haircuts WHERE face_shape = %s", (face_shape,))
     #     haircuts = cursor.fetchall()
     #     cursor.close()
 
-    #     # Construct the haircut list with full image URLs
+    #  
     #     haircut_list = []
     #     for haircut in haircuts:
     #         haircut_id, face_shape, name, description, image_filename = haircut
@@ -88,18 +86,16 @@ class HaircutModel:
         haircuts = cursor.fetchall()
         cursor.close()
 
-        # Construct the haircut list with full image URLs
         haircut_list = []
         for haircut in haircuts:
             haircut_id, face_shape, name, description, image_filename = haircut
-            # Ensure image_filename only contains the file name
             image_url = f"{self.base_url}/images/{image_filename}" if image_filename else None
             haircut_list.append({
             'id': haircut_id,
             'face_shape': face_shape,
             'haircut_name': name,
             'description': description,
-            'image_url': image_url  # This should point to the correct path
+            'image_url': image_url  
         })
         return haircut_list
 
